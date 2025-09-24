@@ -1,0 +1,168 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String      @id @default(uuid())
+  name         String
+  clerk_id      String
+  role         Role        @default(USER)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  workflows    Workflow[]
+  credentials  API_Credentials[]
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+model Workflow {
+  id          String          @id @default(uuid())
+  user        User            @relation(fields: [userId], references: [id])
+  userId      String
+  name        String
+  description String?
+  status      WorkflowStatus  @default(DRAFT)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  nodes       Workflow_Node[]
+  edges       Workflow_Edge[]
+  executions  Execution[]
+  schedules   Schedule[]
+}
+
+enum WorkflowStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+model Workflow_Node {
+  id         String    @id @default(uuid())
+  workflow   Workflow  @relation(fields: [workflowId], references: [id])
+  workflowId String
+  type       NodeType
+  config     Json
+  positionX  Float
+  positionY  Float
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  edgesOut   Workflow_Edge[] @relation("SourceNode")
+  edgesIn    Workflow_Edge[] @relation("TargetNode")
+  aiConfig   AI_Node_Config?
+  logs       Execution_Log[]
+}
+
+enum NodeType {
+  HTTP_REQUEST
+  DELAY
+  TRANSFORM
+  AI_CALL
+  CONDITION
+}
+
+model Workflow_Edge {
+  id         String         @id @default(uuid())
+  workflow   Workflow       @relation(fields: [workflowId], references: [id])
+  workflowId String
+  sourceNode Workflow_Node  @relation("SourceNode", fields: [sourceNodeId], references: [id])
+  sourceNodeId String
+  targetNode Workflow_Node  @relation("TargetNode", fields: [targetNodeId], references: [id])
+  targetNodeId String
+  condition  Json?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+}
+
+model Execution {
+  id          String          @id @default(uuid())
+  workflow    Workflow        @relation(fields: [workflowId], references: [id])
+  workflowId  String
+  status      ExecutionStatus @default(RUNNING)
+  startedAt   DateTime        @default(now())
+  finishedAt  DateTime?
+  triggerType TriggerType
+  logs        Execution_Log[]
+}
+
+enum ExecutionStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+  STOPPED
+}
+
+enum TriggerType {
+  MANUAL
+  SCHEDULED
+  API
+}
+
+model Execution_Log {
+  id          String     @id @default(uuid())
+  execution   Execution  @relation(fields: [executionId], references: [id])
+  executionId String
+  node        Workflow_Node @relation(fields: [nodeId], references: [id])
+  nodeId      String
+  status      LogStatus  @default(PENDING)
+  startedAt   DateTime   @default(now())
+  finishedAt  DateTime?
+  inputData   Json?
+  outputData  Json?
+  errorMsg    String?
+}
+
+enum LogStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+model API_Credentials {
+  id              String   @id @default(uuid())
+  user            User     @relation(fields: [userId], references: [id])
+  userId          String
+  serviceName     String
+  encryptedApiKey String
+  createdAt       DateTime @default(now())
+}
+
+model Schedule {
+  id          String    @id @default(uuid())
+  workflow    Workflow  @relation(fields: [workflowId], references: [id])
+  workflowId  String
+  cronExp     String
+  nextRunAt   DateTime?
+  isActive    Boolean   @default(true)
+}
+
+model AI_Node_Config {
+  id        String         @id @default(uuid())
+  node      Workflow_Node  @relation(fields: [nodeId], references: [id])
+  nodeId    String         @unique
+  provider  AIProvider
+  model     String
+  temperature Float?
+  maxTokens Int?
+}
+
+enum AIProvider {
+  OPENAI
+  GEMINI
+  ANTHROPIC
+}
